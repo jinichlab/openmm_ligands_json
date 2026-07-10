@@ -1,0 +1,36 @@
+name: openmm-ligands
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  # MD engine
+  - openmm=8.1.1
+  - openmmtools=0.25.0
+  - pdbfixer=1.9
+  # Ligand parameterization (protein–ligand systems)
+  - openmmforcefields>=0.12.0   # SystemGenerator: GAFF / OpenFF / espaloma templates
+  - openff-toolkit>=0.14.0      # Molecule from SDF/MOL2 (bond orders + protonation)
+  - rdkit                       # cheminformatics backend for openff-toolkit
+  - pymol-open-source           # split_ligand.py: split complex -> protein PDB + ligand SDFs
+  - openbabel                   # split_ligand.py --ligand-ph: pH-based ligand (de)protonation
+  # Trajectory analysis
+  - mdtraj=1.10.3
+  - ambertools=24.8
+  - parmed
+  - biopython
+  # Numerics / data
+  - numpy=1.26.4
+  - pandas=2.2.2
+  - scipy=1.14.1
+  - networkx
+  - matplotlib
+  # Visualization
+  - nglview
+  - pip
+  - pip:
+    - mdanalysis==2.8.0
+    - dynetan==2.2.2
+    - deeptime==0.4.5
+    - pytraj
+    - parmed

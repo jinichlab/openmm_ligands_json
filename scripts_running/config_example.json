@@ -1,0 +1,41 @@
+{
+  "_comment": "Config + state tracker for one protein-ligand (or apo) system. 'ligands' lists one SDF per physical ligand copy; leave it [] for an apo run. Force fields for protein, water and ligand are all independently selectable.",
+
+  "pdb": "/path/to/protein.pdb",
+  "ph": 7.0,
+  "remove_heterogens": true,
+  "keep_water": false,
+
+  "force_field": "amber/ff14SB.xml",
+  "force_field_water": "amber/tip3p_standard.xml",
+  "ligand_force_field": "gaff-2.11",
+  "box_size": 1.0,
+
+  "ligands": [
+    {"sdf": "/path/to/LIG_A_301.sdf", "resname": "LIG", "chain": "A", "resid": 301}
+  ],
+
+  "platform": "CUDA",
+  "device": 0,
+  "hydrogen_mass": null,
+
+  "minimization_vac": { "steps": 5000 },
+  "minimization_sol": { "steps": 5000 },
+
+  "nvt": { "steps": 200000, "recorder": 500, "time_step": 0.001 },
+  "npt": { "steps": 500000, "time_step": 0.002, "recorder": 5000 },
+  "production": { "steps": 2500000, "time_step": 0.002, "recorder": 5000 },
+
+  "postprocessing": {
+    "unwrap": { "remove_water": true },
+    "ligand_rmsd": {
+      "align_selection": "protein and name CA",
+      "ref_frame": 0,
+      "heavy_only": true,
+      "ligand_resnames": ["LIG"]
+    }
+  },
+
+  "results": {},
+  "replicas": []
+}
