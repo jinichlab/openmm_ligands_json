@@ -1,0 +1,15 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Local run outputs / scratch
+run_gwt1/
+work/
+*.log
+gmx_MMPBSA.log
+
+# MD artifacts (should not be versioned)
+*.dcd
+*.chk
+*.prmtop
+*.inpcrd

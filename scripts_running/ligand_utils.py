@@ -98,19 +98,24 @@ def unique_by_chemistry(molecules):
 
 def build_system_generator(protein_ff, water_ff, ligand_ff, molecules,
                            periodic, hydrogen_mass=None, cache=None,
-                           nonbonded_cutoff=1.2):
+                           nonbonded_cutoff=1.2, constraints=HBonds, rigid_water=True):
     """
     Construct an openmmforcefields SystemGenerator that knows about the protein,
     water, and every unique ligand chemistry.
 
     periodic=True  -> PME system (solvated steps)
     periodic=False -> NoCutoff system (vacuum minimization)
+
+    constraints/rigid_water default to HBonds + rigid water (for dynamics). Pass
+    constraints=None, rigid_water=False to get an *unconstrained* System in which
+    every X-H and water bond carries an explicit HarmonicBondForce term — required
+    for a clean ParmEd -> Amber prmtop export (see export_amber.py).
     """
     from openmmforcefields.generators import SystemGenerator
 
     forcefield_kwargs = {
-        "constraints": HBonds,
-        "rigidWater": True,
+        "constraints": constraints,
+        "rigidWater": rigid_water,
         "removeCMMotion": False,
     }
     if hydrogen_mass is not None:

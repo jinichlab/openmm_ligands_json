@@ -1,0 +1,157 @@
+===============================================================================
+ PROTEIN-LIGAND MD PIPELINE - STEP-BY-STEP WALKTHROUGH (educational, Colab)
+===============================================================================
+
+Normal use is the JSON + full pipeline (step_runner.py / run_pipeline.py).
+This file runs every step by hand so you can see how each stage hands its
+output to the next.  The whole design in one sentence:
+
+    system_creation parameterizes the ligand ONCE and freezes the result in
+    solvated_system.xml; every later step just deserializes that file.
+
+-------------------------------------------------------------------------------
+ 0.  COLAB SETUP  (run once per session)
+-------------------------------------------------------------------------------
+# Each `!` line in Colab is its own throwaway shell, so `export` does NOT
+# persist between lines.  Use PYTHON variables + {} substitution instead.
+
+PY = "/usr/local/envs/openmm-ligands/bin/python"   # env's interpreter (abs path)
+SR = "openmm_ligands_json/scripts_running"
+SP = "openmm_ligands_json/scripts_postprocessing"
+
+# Force fields (all independently selectable)
+FF  = "amber/ff14SB.xml"
+FFW = "amber/tip3p_standard.xml"
+LFF = "gaff-2.11"
+
+# Platform: "CUDA" + device index 0, or "CPU" + a thread count
+PLAT = "CUDA"
+DEV  = "0"
+
+# sanity check the env
+!{PY} -c "import openmm, openff.toolkit, openmmforcefields, rdkit; print('imports OK')"
+
+# Known gotcha: pdbfixer needs pkg_resources (setuptools). If you see
+# "No module named 'pkg_resources'":
+#     !{PY} -m pip install "setuptools<81"
+
+# Put your input complex (protein + ligand together) somewhere, e.g. complex.pdb
+!mkdir -p work
+
+===============================================================================
+ PHASE 1 - PREPARE INPUTS
+===============================================================================
+
+# 1. SPLIT the complex -> protein PDB + ligand SDF(s) + ligands.json
+#    Open the SDF and eyeball it before continuing. (Apo: no SDFs = fine.)
+!{PY} {SR}/split_ligand.py -p complex.pdb -o work --prefix sys \
+      --ligand-list work/ligands.json --ligand-ph 7.4
+
+# 2. FIX the protein (missing atoms + H at pH) -> work/fixed.cif
+#    Runs on the PROTEIN ONLY; the ligand is not back yet.
+!{PY} {SR}/pdb_fixer.py -p work/sys_protein.pdb -ph 7.4 -o work/fixed \
+      --ff {FF} --ff_water {FFW}
+
+===============================================================================
+ PHASE 2 - BUILD & PARAMETERIZE
+===============================================================================
+
+# 3. VACUUM MINIMIZATION - the ligand rejoins the protein here -> work/min_vac.pkl
+!{PY} {SR}/minimization.py vacuum -i work/fixed.cif --ligands_json work/ligands.json \
+      --force_field {FF} --force_field_water {FFW} --ligand_force_field {LFF} \
+      --cache work/ligand_cache.json --steps 1000 --platform {PLAT} --device {DEV} \
+      -o work/min_vac
+
+# 4. SYSTEM CREATION - solvate + parameterize ONCE
+#    -> work/solvated_system.xml  (parameters, frozen)  +  work/solvated.pkl (topology)
+#    *** THE KEY STEP *** AM1-BCC/antechamber runs here, once. Everything
+#    downstream deserializes solvated_system.xml and never re-parameterizes.
+!{PY} {SR}/system_creation.py -i work/min_vac.pkl --ligands_json work/ligands.json \
+      --force_field {FF} --force_field_water {FFW} --ligand_force_field {LFF} \
+      --cache work/ligand_cache.json --box_size 1.0 --ionic_strength 0.15 \
+      -o work/solvated
+
+# 5. SOLVATED MINIMIZATION -> work/min_sol.pkl
+!{PY} {SR}/minimization.py solvated -t work/solvated.pkl -x work/solvated_system.xml \
+      --steps 5000 --platform {PLAT} --device {DEV} -o work/min_sol
+
+===============================================================================
+ PHASE 3 - EQUILIBRATE & PRODUCE
+===============================================================================
+
+# 6. NVT (5K->300K ramp, protein backbone restrained) -> work/nvt.xml (+ .dcd/.csv/.pdb)
+!{PY} {SR}/equilibration_nvt_steps.py -t work/min_sol.pkl -x work/solvated_system.xml \
+      --steps 5000 --recorder 500 --time_step 0.001 \
+      --platform {PLAT} --device {DEV} -o work/nvt
+
+# 7. NPT EQUILIBRATION (barostat + restraints) -> work/npt.xml
+!{PY} {SR}/equilibration_npt.py -t work/solvated.pkl -x work/solvated_system.xml \
+      -r work/nvt.xml --apply_restraints \
+      --steps 5000 --time_step 0.002 --recorder 5000 \
+      --platform {PLAT} --device {DEV} -o work/npt
+
+# 8. PRODUCTION (no restraints) -> work/production.dcd + work/production.xml + work/production.pdb
+!{PY} {SR}/equilibration_npt.py -t work/solvated.pkl -x work/solvated_system.xml \
+      -r work/npt.xml \
+      --steps 10000 --time_step 0.002 --recorder 5000 \
+      --platform {PLAT} --device {DEV} -o work/production
+
+# TWO SUBTLETIES (the educational payoff):
+#  - Steps 7-8 use solvated.pkl, NOT min_sol.pkl, because positions/velocities/box
+#    are loaded from the upstream state XML (nvt.xml -> npt.xml). Only the topology
+#    is needed from the pkl. Same solvated_system.xml is used throughout.
+#  - Same script does NPT-equil and production; --apply_restraints is the only
+#    difference. Production omits it (and sets positions manually to avoid the
+#    restraint's leftover global 'k' parameter).
+
+===============================================================================
+ PHASE 4 - ANALYZE
+===============================================================================
+
+# 9. UNWRAP PBC (keep ligand with the binding site)
+#    -> work/unwrapped.dcd + work/unwrapped_topology.pdb
+!{PY} {SP}/unwrapp.py -t work/production.dcd -to work/production.pdb -o work/unwrapped.dcd
+
+# 10. LIGAND RMSD (protein-aligned, per-copy heavy-atom) -> work/ligand_rmsd.csv
+!{PY} {SP}/ligand_rmsd.py -t work/unwrapped.dcd -to work/unwrapped_topology.pdb \
+      --align_selection "protein and name CA" --ref_frame 0 -o work/ligand_rmsd.csv
+
+# 11. OTHER CVs read the same unwrapped pair, e.g. RMSF:
+!{PY} {SP}/calculate_rmsf.py -t work/unwrapped.dcd -to work/unwrapped_topology.pdb \
+      --selection "protein and name CA" -o work/rmsf.csv
+
+# 12. AMBER EXPORT for gmx_MMPBSA (reads the serialized System, not the trajectory)
+#     -> work/mmpbsa_*.prmtop / .inpcrd
+!{PY} {SP}/export_amber.py -s work/solvated_system.xml -t work/solvated.pkl -o work/mmpbsa
+
+===============================================================================
+ MENTAL MODEL
+===============================================================================
+
+ complex.pdb --split--> protein.pdb + SDFs --fix--> fixed.cif
+    |
+    +- min vacuum -----> min_vac.pkl
+    +- system_creation-> solvated_system.xml (params, FROZEN) + solvated.pkl (topology)
+    +- min solvated ---> min_sol.pkl --> NVT --> nvt.xml
+    |                                       +--> NPT --> npt.xml --> PRODUCTION --> production.dcd
+    +- postproc: production.dcd --unwrap--> unwrapped.dcd --> ligand_rmsd / rmsf / cvs ...
+                 solvated_system.xml + solvated.pkl --> export_amber
+
+ The one thing to internalize:
+   solvated_system.xml is generated ONCE and carried, unchanged, through every
+   dynamics and export step. That is the "parameterize-once" design.
+
+===============================================================================
+ NOTES
+===============================================================================
+ - Step counts above are tiny on purpose (fast, educational). For real runs:
+     NVT --steps 200000 , NPT --steps 500000 , PRODUCTION --steps 5000000
+ - Apo protein: skip --ligands_json / --ligand everywhere; same steps otherwise.
+ - Colab reminders:
+     * `export` does not persist across `!` lines -> use Python vars + {}.
+     * Run the env's python by absolute path: !{PY} script.py  (no extra 'python').
+     * setuptools<81 needed for pdbfixer (pkg_resources).
+     * conda-pack the env to Google Drive to avoid rebuilding it tomorrow.
+ - Standalone scripts are for learning/debugging. Production use:
+     !{PY} {SR}/step_runner.py --config run.json --step <name> [--replica N]
+===============================================================================

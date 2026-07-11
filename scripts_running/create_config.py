@@ -385,7 +385,8 @@ def main():
     shared_steps = ["pdb_fixer", "minimization_vac", "system_creation", "minimization_sol"]
     replica_steps = ["nvt", "check_nvt", "npt", "check_npt", "production"]
     pp_steps = ["unwrap", "cvs", "ligand_rmsd", "rmsf", "dssp", "sasa", "thermo",
-                "tica", "order_parameter", "network_analysis", "export_amber"]
+                "tica", "order_parameter", "network_analysis", "export_amber",
+                "prepare_mmpbsa"]
 
     print(f"\nCommands for {os.path.basename(config_path)}:")
     print("  # Shared steps (run once):")

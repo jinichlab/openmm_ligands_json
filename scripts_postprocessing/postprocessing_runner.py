@@ -56,6 +56,7 @@ import calculate_thermo as _thermo
 import calculate_order_parameter as _order
 import ligand_rmsd as _ligrmsd
 import export_amber as _export_amber
+import prepare_mmpbsa as _prepare_mmpbsa
 
 VALID_STEPS = [
     "unwrap",
@@ -69,6 +70,7 @@ VALID_STEPS = [
     "tica",
     "network_analysis",
     "export_amber",
+    "prepare_mmpbsa",
 ]
 
 
@@ -224,11 +226,39 @@ def run_step(config_path, step, replica_id=None):
     # ------------------------------------------------------------------ #
     elif step == "export_amber":
         cfg = pp_cfg.get("ligand_rmsd", {})   # reuse ligand_resnames for the mask
+        # export_amber rebuilds an *unconstrained* System from the FF + ligands
+        # (the frozen dynamics System has constrained, type-less H/water bonds).
         result = _export_amber.main(
             system_xml=gs("system_creation", "system"),
             topology_pkl=gs("system_creation", "output"),
             output_prefix=p("mmpbsa"),
             ligand_resnames=cfg.get("ligand_resnames") or None,
+            ligand_specs=config.get("ligands", []),
+            forcefield_name=config.get("force_field", "amber/ff14SB.xml"),
+            water_ff=config.get("force_field_water", "amber/tip3p_standard.xml"),
+            ligand_ff=config.get("ligand_force_field", "gaff-2.11"),
+        )
+
+    # ------------------------------------------------------------------ #
+    elif step == "prepare_mmpbsa":
+        # Build the dry, pbc-removed trajectory + mmpbsa.in + run_mmpbsa.sh, and
+        # run AmberTools MM/PB(GB)SA if it is on PATH (else emit the script).
+        cfg = pp_cfg.get("prepare_mmpbsa", {})
+        lig_cfg = pp_cfg.get("ligand_rmsd", {})
+        resnames = (cfg.get("ligand_resnames") or lig_cfg.get("ligand_resnames")
+                    or [l.get("resname") for l in config.get("ligands", []) if l.get("resname")])
+        result = _prepare_mmpbsa.main(
+            trajectory=g("unwrap", "trajectory"),
+            topology=g("unwrap", "topology"),
+            dry_prmtop=p("mmpbsa_complex_dry.prmtop"),
+            output_dir=os.path.join(out_dir, "mmpbsa"),
+            ligand_resnames=resnames,
+            align_selection=cfg.get("align_selection", "protein and name CA"),
+            igb=cfg.get("igb", 5),
+            saltcon=cfg.get("saltcon", 0.15),
+            startframe=cfg.get("startframe", 1),
+            interval=cfg.get("interval", 1),
+            run=cfg.get("run", "auto"),
         )
 
     # ------------------------------------------------------------------ #

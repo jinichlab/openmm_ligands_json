@@ -37,8 +37,25 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 
 from ligand_utils import NON_LIGAND_RESNAMES, is_ligand_resname
+
+
+def _find_obabel():
+    """Locate the `obabel` executable.
+
+    Checks PATH first, then the directory of the running interpreter — because
+    the standalone/educational pattern runs the conda env's python by absolute
+    path *without activating* the env, so its bin/ (holding obabel) is not on PATH.
+    """
+    exe = shutil.which("obabel")
+    if exe:
+        return exe
+    candidate = os.path.join(os.path.dirname(sys.executable), "obabel")
+    if os.path.exists(candidate):
+        return candidate
+    return None
 
 
 def _protonate_at_ph(in_sdf, out_sdf, ph):
@@ -48,10 +65,11 @@ def _protonate_at_ph(in_sdf, out_sdf, ph):
     groups for the target pH while preserving 3D coordinates.  Raises if obabel
     is unavailable or fails, so a requested pH is never silently ignored.
     """
-    obabel = shutil.which("obabel")
+    obabel = _find_obabel()
     if obabel is None:
         raise RuntimeError(
-            "--ligand-ph requires OpenBabel, but `obabel` was not found on PATH. "
+            "--ligand-ph requires OpenBabel, but `obabel` was not found on PATH "
+            f"or next to the running interpreter ({os.path.dirname(sys.executable)}). "
             "Install it (conda install -c conda-forge openbabel) or drop --ligand-ph "
             "to keep PyMOL's geometry-based protonation."
         )

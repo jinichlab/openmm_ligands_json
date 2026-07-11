@@ -101,24 +101,59 @@ complex (cached in `*_ligand_cache.json`).
 and reports per-ligand heavy-atom RMSD to a reference frame — the standard
 binding-pose-stability metric. One CSV column per ligand copy + a mean.
 
-## gmx_MMPBSA compatibility
+## MM/PB(GB)SA compatibility (AmberTools `MMPBSA.py`)
 
-`export_amber` converts the serialized System to Amber topologies via ParmEd:
+`export_amber` rebuilds an **unconstrained, implicit-solvent-ready** System from
+the frozen topology and converts it to Amber topologies via ParmEd. It writes:
 
 - `*_mmpbsa_complex.prmtop` / `.inpcrd` — solvated; atom order matches `production.dcd`
-- `*_mmpbsa_complex_dry.prmtop` — protein+ligand only; matches the water-stripped `unwrapped.dcd`
+- `*_mmpbsa_complex_dry.prmtop` — protein+ligand only, **box stripped** and with
+  **mbondi2 GB radii** set (so GB doesn't return `EGB = NaN`)
 - ligand mask (e.g. `:LIG`) recorded in the JSON for receptor/ligand splitting
 
-Then (in your `gmxmmpbsa` env):
+Three things that trip up a naive OpenMM→Amber export are handled here: the
+constrained (type-less) H/water bonds, the periodic box on the dry topology
+(GB/PB need `IFBOX=0`), and the missing GB radii.
+
+The exported prmtops feed **AmberTools `MMPBSA.py`** (not `gmx_MMPBSA` — that
+1.6.x tool only accepts GROMACS `.top`/`.tpr`/`.xtc`, so it would need a further
+prmtop→`.top` conversion). In your `gmxmmpbsa` env (`export AMBERHOME=<env>` and
+put its `bin/` on `PATH`), with a **dry, pbc-removed** trajectory (protein+ligand
+only, matching the dry prmtop):
 
 ```bash
-ante-MMPBSA.py -p <prefix>_mmpbsa_complex_dry.prmtop -c com.prmtop -r rec.prmtop \
-               -l lig.prmtop -s ':WAT,Na+,Cl-' -n ':LIG'
-gmx_MMPBSA -O -i mmpbsa.in -cp <prefix>_mmpbsa_complex_dry.prmtop \
-           -ct <prefix>_unwrapped.dcd -lm ':LIG'
+# split the dry complex into receptor + ligand
+ante-MMPBSA.py -p <prefix>_mmpbsa_complex_dry.prmtop -c com.prmtop \
+               -r rec.prmtop -l lig.prmtop -s ':WAT,HOH,Na+,Cl-,NA,CL' -n ':LIG'
+
+# single-trajectory MM-GBSA (igb=5) — mmpbsa.in has &general + &gb blocks
+MMPBSA.py -O -i mmpbsa.in -cp <prefix>_mmpbsa_complex_dry.prmtop \
+          -rp rec.prmtop -lp lig.prmtop -y dry.dcd \
+          -o FINAL_RESULTS.dat -eo FINAL_RESULTS.csv
 ```
 
-Only valid for a matched AMBER-family run.
+### Automated: the `prepare_mmpbsa` step
+
+`scripts_postprocessing/prepare_mmpbsa.py` does all of the above for you: it builds
+the dry, pbc-removed `dry.dcd` (protein-superposed, atom order matched to the dry
+prmtop), writes `mmpbsa.in` and a ready-to-run `run_mmpbsa.sh`, and — **if
+AmberTools is on `PATH`** — runs `ante-MMPBSA.py` + `MMPBSA.py` and parses ΔG:
+
+```bash
+python scripts_postprocessing/prepare_mmpbsa.py \
+       -t unwrapped.dcd -to unwrapped_topology.pdb \
+       -p <prefix>_mmpbsa_complex_dry.prmtop -o mmpbsa/ --ligand_resnames LIG
+```
+
+It runs as the `prepare_mmpbsa` postprocessing step (after `export_amber`). The
+MD/parameterization env usually lacks AmberTools, so by default (`run="auto"`) it
+just emits `run_mmpbsa.sh` — run that in your `gmxmmpbsa`/AmberTools env
+(`export AMBERHOME=<env-prefix>; bash run_mmpbsa.sh`). Verified end-to-end
+(finite ΔG_GB). Only physically meaningful for a matched AMBER-family run.
+
+Building the dry trajectory by hand (if you prefer): strip water/ions from
+`unwrapped.dcd` (mdtraj `select("protein or resname LIG")`), superpose on
+`protein and name CA`, save DCD so its atom order matches the dry prmtop.
 
 ## Limitations / edge cases
 
