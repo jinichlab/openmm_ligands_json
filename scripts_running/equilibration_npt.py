@@ -118,6 +118,7 @@ def main(topology_pkl, system_xml, trajectory,
 def _cli():
     import argparse
 
+    lu.configure_logging()
     p = argparse.ArgumentParser(
         description="NPT equilibration (--apply_restraints) or production (default) for protein–ligand systems.")
     p.add_argument("-t", "--topology_pkl", required=True, help="Pickled (topology, positions) from system_creation")

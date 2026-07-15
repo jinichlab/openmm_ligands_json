@@ -1,5 +1,7 @@
 import argparse
 import json
+import logging
+import os
 from pdbfixer import PDBFixer
 from openmm.app import PDBxFile, ForceField, Modeller
 from openmm.app.element import hydrogen
@@ -94,6 +96,12 @@ def main(path, ph, output, remove_heterogens=False, keep_water=False,
 
 
 if __name__ == "__main__":
+    # Lightweight timestamped logging (pdb_fixer stays free of the heavy openff import).
+    logging.basicConfig(
+        level=getattr(logging, os.environ.get("LIGAND_LOG_LEVEL", "INFO").upper(), logging.INFO),
+        format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+        datefmt="%H:%M:%S", force=True,
+    )
     parser = create_ag_parser()
     args = parser.parse_args()
     main(args.pdb, args.ph, args.output, args.remove_heterogens, args.keep_water,

@@ -19,6 +19,7 @@ Apo case: an empty ligand list solvates the bare protein, same code path.
 """
 
 import json
+import time
 
 from openmm.app import PDBxFile
 from openmm.unit import nanometers, molar
@@ -43,6 +44,8 @@ def main(complex_pkl, ligand_specs, forcefield_name, water_ff, ligand_ff,
     # Strip any crystallographic waters carried in, then add a fresh solvent box.
     modeller.delete([r for r in modeller.topology.residues()
                      if r.name in ("HOH", "WAT", "SOL")])
+    lu.log.info("Solvating (water model '%s', padding %.2f nm, ionic strength %.3f M)...",
+                water_model, box_size, ionic_strength)
     modeller.addSolvent(
         generator.forcefield,
         model=water_model,
@@ -50,8 +53,11 @@ def main(complex_pkl, ligand_specs, forcefield_name, water_ff, ligand_ff,
         ionicStrength=ionic_strength * molar,
         neutralize=True,
     )
-
+    lu.log.info("Solvated to %d atoms; parameterizing the full system "
+                "(ligand charges reused from cache)...", modeller.topology.getNumAtoms())
+    _t0 = time.time()
     system = generator.create_system(modeller.topology)
+    lu.log.info("System parameterized in %.1f s", time.time() - _t0)
 
     out = output[:-4] if output.endswith(".cif") else output
     system_xml = f"{out}_system.xml"
@@ -86,6 +92,7 @@ def main(complex_pkl, ligand_specs, forcefield_name, water_ff, ligand_ff,
 def _cli():
     import argparse
 
+    lu.configure_logging()
     p = argparse.ArgumentParser(
         description="Solvate the vacuum-minimized complex and parameterize it once (serialize System).")
     p.add_argument("-i", "--complex_pkl", required=True,

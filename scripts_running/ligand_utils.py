@@ -20,12 +20,41 @@ Modeller.addSolvent() works transparently around the ligand.
 """
 
 import json
+import logging
 import os
 import pickle
+import time
 
 from openff.toolkit import Molecule
 from openmm import unit, XmlSerializer
 from openmm.app import Modeller, PDBxFile, PME, NoCutoff, HBonds
+
+
+log = logging.getLogger("ligand_pipeline")
+
+
+def configure_logging(level=None):
+    """
+    Set up timestamped logging for the pipeline *and* its noisy dependencies.
+
+    Call this once at the top of a script's CLI. It surfaces progress from
+    openmmforcefields / openff-toolkit (e.g. the antechamber AM1-BCC charge fit),
+    which otherwise runs silently because no logging handler is configured — the
+    reason a slow parameterization looks like a hang.
+
+    Level comes from `level`, else the LIGAND_LOG_LEVEL env var, else INFO.
+    """
+    lvl = (level or os.environ.get("LIGAND_LOG_LEVEL", "INFO")).upper()
+    logging.basicConfig(
+        level=getattr(logging, lvl, logging.INFO),
+        format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+        datefmt="%H:%M:%S",
+        force=True,
+    )
+    # Let the parameterization libraries speak (charge fit / template building)
+    for name in ("openmmforcefields", "openff", "openff.toolkit"):
+        logging.getLogger(name).setLevel(logging.INFO)
+    return log
 
 
 # Residue names that are NOT ligands even though they are HETATMs: crystallographic
@@ -98,19 +127,24 @@ def unique_by_chemistry(molecules):
 
 def build_system_generator(protein_ff, water_ff, ligand_ff, molecules,
                            periodic, hydrogen_mass=None, cache=None,
-                           nonbonded_cutoff=1.2):
+                           nonbonded_cutoff=1.2, constraints=HBonds, rigid_water=True):
     """
     Construct an openmmforcefields SystemGenerator that knows about the protein,
     water, and every unique ligand chemistry.
 
     periodic=True  -> PME system (solvated steps)
     periodic=False -> NoCutoff system (vacuum minimization)
+
+    constraints/rigid_water default to HBonds + rigid water (for dynamics). Pass
+    constraints=None, rigid_water=False to get an *unconstrained* System in which
+    every X-H and water bond carries an explicit HarmonicBondForce term — required
+    for a clean ParmEd -> Amber prmtop export (see export_amber.py).
     """
     from openmmforcefields.generators import SystemGenerator
 
     forcefield_kwargs = {
-        "constraints": HBonds,
-        "rigidWater": True,
+        "constraints": constraints,
+        "rigidWater": rigid_water,
         "removeCMMotion": False,
     }
     if hydrogen_mass is not None:

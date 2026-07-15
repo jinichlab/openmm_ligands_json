@@ -18,6 +18,7 @@ Apo case: an empty ligand list makes minimize_vacuum a plain protein minimizatio
 """
 
 import json
+import time
 
 from openmm import CustomIntegrator, Platform
 from openmm.app import Simulation, PDBxFile
@@ -68,7 +69,14 @@ def minimize_vacuum(protein_pdbx, ligand_specs, force_field, water_ff, ligand_ff
         force_field, water_ff, ligand_ff, molecules,
         periodic=False, hydrogen_mass=None, cache=cache,
     )
+    lu.log.info("Parameterizing complex with ligand FF '%s' — the AM1-BCC charge "
+                "fit (antechamber/sqm) runs here, once per unique ligand%s...",
+                ligand_ff, " (cached)" if cache else "")
+    _t0 = time.time()
     system = generator.create_system(modeller.topology)
+    lu.log.info("System parameterized in %.1f s (%d atoms, %d unique ligand(s))",
+                time.time() - _t0, modeller.topology.getNumAtoms(),
+                len(lu.unique_by_chemistry(molecules)))
     n_restr = lu.add_backbone_restraints(system, modeller.topology, modeller.positions, periodic=False)
     print(f"Backbone restraints on {n_restr} protein atoms.")
 
@@ -105,6 +113,7 @@ def minimize_vacuum(protein_pdbx, ligand_specs, force_field, water_ff, ligand_ff
 def _cli():
     import argparse
 
+    lu.configure_logging()
     p = argparse.ArgumentParser(description="Energy minimization for protein–ligand (or apo) systems.")
     sub = p.add_subparsers(dest="stage", required=True)
 
