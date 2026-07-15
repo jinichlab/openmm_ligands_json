@@ -74,6 +74,18 @@ Pipeline steps (unchanged order): `pdb_fixer → minimization_vac → system_cre
 → minimization_sol → nvt → npt → production`, then postprocessing
 `unwrap → cvs → ligand_rmsd → rmsf → dssp → sasa → thermo → … → export_amber`.
 
+### Progress logging
+
+Every step configures timestamped logging and surfaces the underlying
+`openmmforcefields`/`openff` messages (including the antechamber/`sqm` AM1-BCC
+charge fit — the slowest part of setup, which otherwise runs silently and can
+look like a hang). Control verbosity with the `LIGAND_LOG_LEVEL` env var
+(`DEBUG`/`INFO`/`WARNING`, default `INFO`):
+
+```bash
+LIGAND_LOG_LEVEL=DEBUG python scripts_running/system_creation.py ...
+```
+
 ### Running a single step standalone
 
 `step_runner.py --step <name>` is the normal way to run one step (it pulls all

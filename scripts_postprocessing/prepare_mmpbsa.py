@@ -21,6 +21,7 @@ The MD/parameterization env usually does NOT contain AmberTools, so `run="auto"`
 
 import argparse
 import json
+import logging
 import os
 import re
 import shutil
@@ -153,6 +154,11 @@ def _parse_delta_total(dat_path):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=getattr(logging, os.environ.get("LIGAND_LOG_LEVEL", "INFO").upper(), logging.INFO),
+        format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+        datefmt="%H:%M:%S", force=True,
+    )
     p = argparse.ArgumentParser(
         description="Build the dry trajectory + inputs and (optionally) run AmberTools MM/PB(GB)SA.")
     p.add_argument("-t", "--trajectory", required=True, help="Unwrapped trajectory (production/unwrapped .dcd)")

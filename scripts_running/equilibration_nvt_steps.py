@@ -126,6 +126,7 @@ def main(topology_pkl, system_xml, simulation_steps, recorder_steps, platform_, 
 def _cli():
     import argparse
 
+    lu.configure_logging()
     p = argparse.ArgumentParser(description="NVT equilibration with a 5K->300K temperature ramp.")
     p.add_argument("-t", "--topology_pkl", required=True, help="Pickled (topology, positions) from minimization_sol")
     p.add_argument("-x", "--system_xml", required=True, help="Serialized System XML from system_creation")

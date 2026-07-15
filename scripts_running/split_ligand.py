@@ -39,7 +39,7 @@ import shutil
 import subprocess
 import sys
 
-from ligand_utils import NON_LIGAND_RESNAMES, is_ligand_resname
+from ligand_utils import NON_LIGAND_RESNAMES, is_ligand_resname, configure_logging
 
 
 def _find_obabel():
@@ -134,6 +134,7 @@ def split(pdb_path, out_dir, prefix=None, extra_exclude=None, ph=None):
 
 
 def main():
+    configure_logging()
     parser = argparse.ArgumentParser(description="Split a complex PDB into protein PDB + ligand SDFs (PyMOL)")
     parser.add_argument("-p", "--pdb", required=True, help="Input protein–ligand complex PDB")
     parser.add_argument("-o", "--out_dir", required=True, help="Directory for the protein PDB and ligand SDFs")

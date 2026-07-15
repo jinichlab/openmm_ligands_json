@@ -123,6 +123,7 @@ def main(system_xml, topology_pkl, output_prefix, ligand_resnames=None, json_out
 
 
 if __name__ == "__main__":
+    lu.configure_logging()
     parser = argparse.ArgumentParser(description="Export Amber prmtop/inpcrd for MM/PBSA (rebuilds an unconstrained System)")
     parser.add_argument("-s", "--system_xml", default=None,
                         help="Serialized System XML (kept for interface compatibility; not used — "

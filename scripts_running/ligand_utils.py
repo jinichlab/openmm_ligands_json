@@ -20,12 +20,41 @@ Modeller.addSolvent() works transparently around the ligand.
 """
 
 import json
+import logging
 import os
 import pickle
+import time
 
 from openff.toolkit import Molecule
 from openmm import unit, XmlSerializer
 from openmm.app import Modeller, PDBxFile, PME, NoCutoff, HBonds
+
+
+log = logging.getLogger("ligand_pipeline")
+
+
+def configure_logging(level=None):
+    """
+    Set up timestamped logging for the pipeline *and* its noisy dependencies.
+
+    Call this once at the top of a script's CLI. It surfaces progress from
+    openmmforcefields / openff-toolkit (e.g. the antechamber AM1-BCC charge fit),
+    which otherwise runs silently because no logging handler is configured — the
+    reason a slow parameterization looks like a hang.
+
+    Level comes from `level`, else the LIGAND_LOG_LEVEL env var, else INFO.
+    """
+    lvl = (level or os.environ.get("LIGAND_LOG_LEVEL", "INFO")).upper()
+    logging.basicConfig(
+        level=getattr(logging, lvl, logging.INFO),
+        format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+        datefmt="%H:%M:%S",
+        force=True,
+    )
+    # Let the parameterization libraries speak (charge fit / template building)
+    for name in ("openmmforcefields", "openff", "openff.toolkit"):
+        logging.getLogger(name).setLevel(logging.INFO)
+    return log
 
 
 # Residue names that are NOT ligands even though they are HETATMs: crystallographic
